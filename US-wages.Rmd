@@ -1,0 +1,217 @@
+---
+title: "U.S Wages"
+subtitle: "(Data Visualization)"
+author: "(Ibrahim Khan Jabarkhail)"
+date: "`r Sys.Date()`"
+papersize: a4
+geometry: margin=4cm
+colorlinks: true
+output:
+  pdf_document:
+    number_sections: true
+---
+
+# Downloading and storing the data
+In this project, I have looked at the data related to wages from US for years 1976-1982. Firstly, I installed the Ecdat package and looked at the data for wages and then checked the dataset. It includes 4165 observations and 12 variables. 
+
+```{r setup1, echo=FALSE, message=FALSE}
+#install.packages('tinytex')
+#tinytex::install_tinytex()
+#install.packages("Ecdat")
+library(tidyverse)
+library(tidyverse)
+library(Ecdat)
+data(Wages)
+
+```
+
+```{r, echo= FALSE}
+wages_formatted <-
+  Wages %>%
+  mutate(
+    id = as.factor(rep(1:595, each = 7)),
+    year = rep(1976:1982, times = 595)
+  )
+
+```
+
+# Task 1
+
+Here, I will describe the data or the data set that I am analyzing. 
+
+```{r, echo=FALSE}
+library(Ecdat)
+library(dplyr)
+library(ggplot2)
+
+wages_formatted <- Wages %>%
+  mutate(
+    id = as.factor(rep(1:595, each = 7)),
+    year = rep(1976:1982, times = 595),
+    wage = exp(lwage)  # Adding original wage scale variable
+  )
+
+```
+
+
+```{r, echo=FALSE}
+summary_table <- wages_formatted %>%
+  summarise(
+    total_obs = n(),
+    total_var = length(names(.)),
+    avg_wage = mean(wage, na.rm = TRUE),
+    median_wage = median(wage, na.rm = TRUE)
+  )
+
+```
+
+```{r, echo=FALSE, include = TRUE}
+library(knitr)
+
+kable(summary_table, caption = "Summary Statistics of Wages Dataset", 
+      col.names = c("Total Observations", "Total Variables", "Average Wage", "Median Wage")) 
+```
+
+```{r echo=FALSE, include = TRUE}
+library(knitr)
+library(dplyr)
+
+# Create a data frame with variable names and descriptions
+variables_df <- data.frame(
+  Variable = names(wages_formatted),
+  Description = c(
+    "Experience of work in full time",
+    "Weeks of work per year",
+    "blue collar",
+    "If an individual works in a manufacturing industry",
+    "If an individual lives in a metropolitan area",
+    "If an individual is living in south",
+    "Is the individual married",
+    " Male or female",
+    "Is the salary set by union",
+    "The number of years of education",
+    "If an individual is black",
+    "log of monthly wage",
+    "Unique identifier for each individual",
+    "Which year it is",
+    "wage of workers"
+  )
+)
+
+# Use kable to create a nicely formatted table
+kable(variables_df, caption = "List of Variables in wages_formatted dataset")
+
+
+```
+
+
+Looking at the the dimensions, we can see that there are a total of 4165 observations and 15 are variables. The dataset is a pane of 595 observations from 1976 to 1982. The variables also include three new variables that we formed i.e., ID, Year and wages. Initially, the data set had 12 variables. 
+
+Next, I will draw the chart to look at the patterns of wages of individuals over the years 1976-1982. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="Distribution of wages over the years studied in the data set"}
+
+library(ggplot2) 
+library(tidyverse)
+
+p <- ggplot(wages_formatted, aes(x = year, y = wage)) +
+  geom_smooth(method = 'lm', se = FALSE, color = "blue") +   # Use linear regression for the smoother
+  geom_line(aes(group = id), alpha = 0.2, color = "gray") +  # Make sure to group by 'id' for individual lines
+  labs(
+    title = "Development of Wages Over Time",
+    x = "Year",
+    y = "Wage (in US dollars)"
+    ) +
+  theme_minimal() +                                          
+  theme(legend.position = "none")                            
+
+p
+
+```
+
+The plot above demonstrates that the wages have been mostly flat and there are also few individuals whose where the wages have increased to their high levels for example the wages have reached up till USD 5000 over the course of the years for some individuals. From 1976 to around 1978, wages for the majority of individuals/entities appear relatively stable and clustered around the lower end of the wage spectrum. After 1978, there's increased variability, with some entities experiencing a sharp increase in wages, peaking around 1980. However, most remain at the lower wage range.
+
+The observed fluctuations in the wages are very few compared to the amount of wages that have remained flattened. However, there appears to be significant variability between different individuals, with some experiencing steep wage increases while others exhibit more stagnant wage trajectories.  
+
+
+
+## Task 2
+
+Here, I will filter the data first to evaluate the relationship between the two variables only for the year 1982. I can then check if the relationship between these two variables is positive or negative.
+
+```{r echo=FALSE}
+
+wages_1982 <- wages_formatted %>%
+  filter(year == 1982)
+```
+
+Now, I will plot the figure to see the relationship.
+
+```{r, echo=FALSE, fig.cap="Relationship between wages and year of education", message=FALSE}
+ggplot(wages_1982, aes(x = ed, y = lwage)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Adding a regression line
+  labs(title="Relationship Between Education and Wages (1982)",
+       x="Years of Education",
+       y="Log wage") +
+  theme_minimal()
+
+```
+
+It is now evident from the graph that there is positive relationship between years of education and higher wages. In other words, looking at the graph we can say that with the increase in education levels, the wage of the workers also increased. There is linear relationship between the two variables for the year 1982. The stragiht line in the chart also indicate the positive relationship between years of education and the wage levels. One can easily that with for example 12 years of education results in a higher wage than with 6 years of education. It could also be the case that with the higher education people secure jobs in good industries or secure white collar jobs which make their wages higher. 
+
+# Task 3 
+
+Here, I evaluate the relationship between wage and some of the other variables in the data set. Firstly, I created the new categorical variabele wage_levels which would highlight if the wage for particular variables or category is low, average or high. Later, I comapred it with different categorical variables. 
+ 
+```{r, echo=FALSE}
+
+wages_with_levels <-
+  wages_formatted %>%
+  mutate(
+    wage_levels = cut(
+      wage,
+      c(0, 750, 1500, max(wage)),
+      labels = c("Low", "Mid", "High"),
+      ordered_result = TRUE
+    )
+  )
+```
+
+
+Now, here I will assess the relationship between wage levels and one of the categorical variables in the data set. I have checked the wage_levels against different categorical variables like married/non-married.
+
+
+```{r echo=FALSE, fig.cap="Difference in wage levels among male and female"}
+ggplot(wages_with_levels, aes(sex, fill = wage_levels)) +
+  geom_bar(position = "fill") +
+  labs(
+    title = "Distribution of Wage Levels by Sex",
+    y = "Proportion"  # This sets the y-axis label
+  )
+
+
+```
+
+
+Among women, the graph reveals that mostly females have low level of wages, whereas only a margin of men have higher wages. The middle wage is also higher for men than women. 
+ 
+```{r echo=FALSE, fig.cap="Difference in wage levels among the individuals who are married/unmarried"}
+library(ggplot2)
+
+ggplot(wages_with_levels, aes(x = married, fill = wage_levels)) +
+  geom_bar(position = "dodge") +
+  labs(
+    x = "Married", 
+    y = "wage_levels", 
+    fill = "wage_levels",
+    title = "Distribution of Wage Levels by Marital Status"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+
+Figure 4 also shows that the wage levels of the married ones are higher than the ones who are not married in all categories of the wages. This could also mean that the number of individuals who are married is higher than the ones who are not married. 

@@ -1,0 +1,357 @@
+---
+title: "Dimensionality Reduction"
+date: '-'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Preamble: Forecasting market returns
+Here, I continue with the problem of forecasting market return that I illustrated in Lecture 5. In order to train the implementation of PCR/PLS, I will replicate our previous results with a slight twist. More specifically, I will choose tuning parameters via cross-validation. Additionally, the training sets used for model evaluation are defined differently. While the example in Lecture 5 defined an expanding window of training sets with fixed starting period, I are going to use a rolling window that moved both the start and end date of the training set.
+
+The data for this lab is provided by two csv files. 
+The file *sorted_portfolios100.csv* contains the monthly returns of 100 equally Iighted portfolios sorted by size and the book-to-market ratio. The data is taken from Kenneth French's data library and missing values have been inserted. The time period covered is January 1960 until December 2009
+The file *tIlve_month_returns.csv* contains 12-month returns on a value-Iighted market portfolio. This series takes moving 12-month sums of returns of the U.S. market factor, as provided on Kenneth French's data library. The entry in row $t$ of the dataset corresponds to the market returns over the months t+1 until t+12. Accordingly, the first observed value in our sample is the 12-month return over the period February 1960 - January 1961. The last observation covers the period January-December 2010.
+
+To begin with the lab, I import both your outcome as Ill as the 100 predictors into R using the code below. You might be required to modify the file path.
+``` {r }
+portfolios <- as.matrix(read.csv("sorted_portfolios100.csv")[,-1])
+mkt_ret_12m <- c(read.csv("tIlve_month_returns.csv")[,-1])
+
+portfolios_train <- portfolios[1:540,]
+
+mkt_ret_12m_train <- mkt_ret_12m[1:540]
+
+```
+
+## Part 1: Canned routines for PCR and PLS
+
+In this basic part, I work with the *pls* library which contains the `pcr()` and `plsr()` commands for PCR and PLS. These functions have almost exactly the same inputs as `lm()`. That is, I specify a model formula that tells us the output as Ill as all input variables that I want to use. In addition, I need to specify the number of artificial variables (components) that are to be obtained. 
+
+### Task 1a)
+
+Conduct the following tasks:
+
+1. Create a data frame `data_1a` that contains `portfolios` and `mkt_ret_12m`. 
+2. Check the help file for `pcr()` (or `plsr()` or `mvr()`) to understand how function arguments must be expressed.
+3. Use the `pcr()` command to fit a PC regression on 12-month market returns.
+
+    - Use *two* principal components obtained from all 100 monthly portfolio returns, 
+    - Use only the earliest 540 data points, 
+    - Specify suitable options for `pcr()` that ensure the predictors are both demeaned and scaled, 
+    - Save your learned model as `pcr_fit_1a`.
+
+``` {r, echo=TRUE}
+
+library(pls)
+data_1a <- data.frame(portfolios, mkt_ret_12m)
+#help("pcr")
+pcr_fit_1a <- pcr(mkt_ret_12m ~ ., data = data_1a, scale = TRUE, center = TRUE, ncomp = 2, subset = 1:540)
+
+```
+
+### Task 1b)
+
+I will now get predictions from our learned principal components regression. HoIver, I'll do that time series style. 
+
+When I work with time series, our training data consists of historical series from some starting point in the past until today. Our goal is outcome prediction in the immediate future. That is, our test data may simply be a single data point - at least for the model that I trained at one specific point in time. 
+
+In Task 1a) I used the earliest 540 data points, assuming that this was all our data. Now, I want to get a forecast of data point 541, assuming that this is the immediate future. The more distant future is not of immediate interest for us and I will predict it step-by-step as time passes and more training data appears. 
+
+Now obtain a prediction from your model for data point 541 in `data_1a` and save it as `pcr_pred_1b`. When using `predict()`, you need to state your number of principal components once more as argument `comps`.
+
+
+``` {r, echo=TRUE}
+
+pcr_pred_1b <- predict(pcr_fit_1a, data_1a[541,], comps = 2)
+
+
+```
+
+
+## Part 2: Model tuning with caret
+
+Functions in the *pls* library contain a built-in k-fold cross-validation routine. HoIver, that doesn't help us here, because I work with time series data. Instead, in this moderately difficult part, I use the *caret* library as an alternative tool for model tuning. *Caret* has very detailed documentation which you can find at https://topepo.github.io/caret/index.html 
+
+*Caret* is an extremely helpful tool for model tuning because it provides a single set of commands that can be applied for many different machine learning methods. Caret does not contain any own functions for model training. Instead, it wraps around the most popular R libraries for standard machine learning methods and communicates with these libraries internally. That means you don't have to train models using `glm()`, `glmnet()`, `plsr()` or `pcr()` yourself. Instead you use functions provided by `caret()` for model training and tuning in a single framework. 
+
+The central function in *caret* is `train()`. HoIver, before I can use this function, I need to prepare objects that define the settings of the model tuning process.
+
+### Task 2a)
+
+First, I need to specify the type of cross-validation that I want to implement. This is done by using the `trainControl()` function. Now do the following:
+
+1. In *caret*, the rolling/expanding cross-validation method is called `timeslice`. Read the `trainControl()` help file to understand which argument you need to set `timeslice`.
+2. I want rolling cross-validation with a fixed window of 90 consecutive observations. The hold-out data is the first observation after the end of the corresponding training batch, nothing more. The *three additional arguments* in `trainControl()` that allow you to implement this are discussed in Section 4.2 of the official *caret* documentation (see the link above). Read this section in order to figure out how to set these arguments.
+3. Use `trainControl()` with four correctly chosen arguments to specify the cross-validation settings described in step 2. Save these settings as `tune_ctrl_2a`.
+
+``` {r, echo=TRUE}
+
+library(caret)
+
+tune_ctrl_2a <-  trainControl(method = "timeslice",initialWindow = 90,horizon = 1,  fixedWindow = TRUE)
+
+```
+
+### Task 2b)
+
+Next, I need to create a grid of potential tuning parameter values. I consider the performance of PCR with $1,2,\ldots,5$ principal components Create a data frame `tune_grid_2b` that contains the integers from 1 to 5 as its only variable. The name of this variable must be the name of the argument for the number of principal components in `pcr()`.
+
+``` {r, echo=TRUE}
+
+tune_grid_2b <-  expand.grid(ncomp = 1:5)
+
+```
+
+### Task 2c)
+
+Now I can use `train()` to tune our PCR model using `mkt_ret_12m_train` and `portfolios_train`. Set the `method` argument of `train()` to `"pcr"` to use `pcr()` as command for model training. Then, check the help file for `train()` to correctly specify 
+
+- model inputs,
+- model output, 
+- training controls from Task 2a,
+- the tuning grid from Task 2b.
+
+For inputs and outputs, use the default S3 method of `train()`. Save the results of your model tuning process as ` pcrtune2c`.
+
+``` {r, echo=TRUE}
+pcr_tune_2c <- train(x = portfolios_train,y = mkt_ret_12m_train,method = "pcr",trControl = tune_ctrl_2a,tuneGrid = tune_grid_2b)
+print(pcr_tune_2c)
+
+``` 
+
+### Task 2d)
+
+`pcr_tune_2c` contains both the optimal tuning parameter value as Ill as the learned model with this value (learned using the entire provided time series). Where inside `pcr_tune_2c` can you find these two objects? Write your specific(!) ansIr into the string variable `caretresults_2d`,
+
+``` {r, echo=TRUE}
+
+caretresults_2d <- "For optimal tuning parameter, I can utilize 'pcr_tune2c$bestTune', and for the learned model I can make use of 'pcr_tune2c$finalModel' "
+
+```
+
+### Task 2e)
+
+Wait...didn't I say something about input scaling during lecture 5? I better check under what input transformations I just tuned our model! Both `train()` and `pcr()` potentially preprocess your inputs. Accordingly, please conduct the following tasks:
+
+1. Extract the model with best tuning parameter value from `pcr_tune_2c` into a new object `pcr_best_2e`. Search inside `pcr_best_2e`  (e.g.using `names()`) for the *call* that was made to create this model and save this call as new object `pcr_call_2e`. Then look whether any options for variable scaling have been specified in this call. 
+2. Check the help file for `pcr()` to figure out what the function defaults are when I don't make any specific statement about input preprocessing.
+3. In what way did `pcr()` apply input scaling (in the sense of lecture 1)? Write your ansIr into the string variable `Xscaling_pcr_2e`.
+4. Have a look at the objects inside `pcr_tune_2c` that are *not* the object addressed in step 1. Which object provides you information about eventual input scaling conducted by `train()` and what does it say? Write your ansIr into the string variable `Xscaling_train_2e`.
+
+```{r, echo=TRUE}
+
+## 1.
+pcr_best_2e <- pcr_tune_2c$finalModel
+pcr_call_2e <- pcr_best_2e$call
+print(pcr_call_2e)
+## 3.
+Xscaling_pcr_2e <- "it applied scaling function to data points to ensure all datapoints are on comparable scale"
+
+## 4.
+Xscaling_train_2e <- "As I run pcr_tune_2c$preProcess, it returned null indicating there was no pre-processing performed. It shows that there is no scaling to set SD to 1"
+
+
+```
+
+### Task 2f)
+
+Now I want to redo model tuning for inputs that are (statistically) standardized. I also want `train()` to conduct the entire pre-processing job whereas `pcr()` uses the data as it is. Conduct the following steps:  
+
+1. Check which arguments of `pcr()` one would need to specify to disable input transformations. This argument simply has to be added to the arguments in `train()`.
+2. Check which argument of `train()` I need to specify in order to standardize inputs.
+3. Re-run `train()` with the correctly specified additional arguments from steps 1. and 2. above. Save the output of `train()` as `pcr_tune_2f`.
+
+``` {r, echo=TRUE}
+
+pcr_tune_2f  <- caret::train(method = 'pcr', x = portfolios_train, y = mkt_ret_12m_train, trControl = tune_ctrl_2a, tuneGrid = tune_grid_2b, scale = F, center = F, preProcess = c('center', 'scale'))
+print(pcr_tune_2f)
+
+```
+
+### Task 2g)
+
+Repeat task 2f but for PLS instead of PCR and save the output of `train()` as `pls_tune_2g`. What is the optimal number of principal components/PLS directions that rolling cross-validation suggests in tasks 2f and 2g? Write your ansIr into the string variable `tune_best_2g`.
+
+``` {r, echo=TRUE}
+
+pls_tune_2g  <- caret:: train(x = portfolios_train, y = mkt_ret_12m_train, method = "pls", trControl = tune_ctrl_2a, tuneGrid = tune_grid_2b, scale = F, center = F,preProcess = c('center', 'scale'))
+print(pls_tune_2g)
+
+tune_best_2g <- "As given in the results and in accordance to the loIst value, the optimal number of PCR/PLS directions are 5 and 3 respectively"
+
+```
+
+
+## Part 3: Comparing two candidate algorithms
+
+Part 2 helped us to find the optimal tuning parameter values for both PCR and PLS. HoIver, which of these two (tuned) algorithms is better for forecasting returns? I will find out in this rather difficult part.
+
+In order to choose betIen PCR and PLS, I check how Ill either of the two procedures predicts the outcomes of data points $541, 542, \ldots, 600$. I still do this in time-series fashion. That means I use data up to data point 540 to predict data point 541 and move start and end of training and hold-out data to the end of the sample one data point at a time. 
+The data used to train our model is still the 90 data points prior to the test data point.
+
+### Task 3a)
+
+Create a vector `mkt_ret_12m_test` and a matrix `portfolios_test` that I can use for performance evaluation on the last 60 data points of `mkt_ret_12m` and `portfolios`. That is, it must go back long enough in time to include the training data for an output prediction of data point 541.
+
+``` {r, echo=TRUE}
+
+mkt_ret_12m_test <- mkt_ret_12m[451:600]
+portfolios_test  <- portfolios[451:600,]
+
+
+```
+
+### Task 3b)
+
+Use `train()` to evaluate the performance of PCR and PLS with the tuning parameter values that you arrived at in Tasks 2f and 2g. The setup is changed as follows: 
+
+  1. The tuning controls are the same as in Task 2a, but I additionally want to save *all* predictions. Save corresponding tuning controls as `tune_ctrl_3b`.
+  2. Use different tuning grids that only contain the chosen tuning parameter value. Create such "grids" as data frames `tune_pcr_3b` and `tune_pls_3b`. 
+  3. Standardize the data by using the `center` and `scale` arguments in `pcr()` and `pls()`. Do *not* use the `preProcess` argument in `train`. Unfortunately, the `preProcess` argument leads to model evaluation in terms of standardizes outputs. This is something I want to avoid in the upcoming Task 3d.
+  
+  Save your performance evaluation results as `eval_pcr_3b` and `eval_pls_3b`. 
+
+``` {r, echo=TRUE}
+
+tune_ctrl_3b <- trainControl(method = "timeslice",initialWindow = 90, horizon = 1, fixedWindow = TRUE, savePredictions = "all")
+1.
+optimal_components_pcr <- 5
+optimal_components_pls <- 3
+
+## 2.
+tune_pcr_3b <- data.frame(ncomp = pcr_tune_2f$bestTune)
+tune_pls_3b <- data.frame(ncomp = pls_tune_2g$bestTune)
+
+## 3.
+eval_pcr_3b <- caret::train(x = portfolios_test, y = mkt_ret_12m_test, method = "pcr", trControl = tune_ctrl_3b, tuneGrid = tune_pcr_3b, center = FALSE, scale = FALSE, preProcess = c('center','scale'))
+eval_pls_3b <- caret::train(x = portfolios_test, y = mkt_ret_12m_test, method = "pls", trControl = tune_ctrl_3b, tuneGrid = tune_pls_3b, center = FALSE, scale = FALSE, preProcess = c('center','scale'))
+
+print(eval_pcr_3b)
+print(eval_pls_3b)
+```
+
+### Task 3c)
+
+The RMSE provided by `train()` is hard to interpret if I want to know whether any of the two machine learning algorithms is practically useful at all. A better alternative is out-of-sample R-squared. I define it mathematically as 
+$$
+  R^2 = 1 - \sum_{t=t_0}^{T} \frac{(y_t - \hat{y}_t)^2}{(y_t -\bar{y}_{t,-90})^2}.
+$$
+Here, 
+
+- $y_t$ is the observed output at time $t$, 
+- $t_0$ is the time period of the earliest test observation (541 in our case),
+- $\hat{y}_t$ is the model prediction of $y_t$ at time $t$,
+- $\bar{y}_{t,-90}=90^{-1}\sum_{\ell}^{90} y_{t-\ell}$ is the average outcome of the 90 output values before $t$
+
+To construct this R-squared, do the following
+
+1. Construct a vector `ymeans_3c` whose element $t$ contains the average of `mkt_ret_12m` from time point $450+t$ to $539+t$. Use a `for`-loop to do that.
+2. Get holdout sample predictions from the `pred` object inside `eval_pcr_3b` and `eval_pls_3b`. Save your predicted output values as `pred_pcr_3c` and `pred_pls_3c`.
+3. Get observed outputs in the holdout sample and save them as `yobs_3c`. They are saved in the same object as the predictions from step 2., so you don't even have to find the correct rows of `mkt_ret_12m_test`.
+4. Construct your out-of-sample R-squared using the objects constructed in steps 1-3. 
+
+Does PCR outperform PLS or is it the other way around? Does R-squared suggest that any of the two methods is useful for predicting returns? Motivate your conclusion and express it in the string variable `conclusion_3c`.
+
+
+``` {r, echo=TRUE}
+## 1.
+ymeans_3c <- rep(x = 0, times=60)
+for (tt in 1:60 ) {
+  ymeans_3c[tt] <- mean(mkt_ret_12m[(450 + tt):(539 + tt)])
+}
+## 2.
+pred_pcr_3c <- eval_pcr_3b$pred$pred
+pred_pls_3c <- eval_pls_3b$pred$pred
+#
+## 3.
+yobs_3c <- eval_pls_3b$pred$obs
+# 
+## 4.
+R2_pcr_3c <- 1 - sum((yobs_3c - pred_pcr_3c)^2) / sum((yobs_3c - ymeans_3c)^2)
+R2_pls_3c <- 1 - sum((yobs_3c - pred_pls_3c)^2) / sum((yobs_3c - ymeans_3c)^2)
+print(R2_pcr_3c)
+print(R2_pls_3c)
+# 
+conclusion_3c <- "After evaluating the two values of R^2 above, it is evident that the PLS performs better than PCR by a margin of about 0.15. In addition, PLS is more useful than predicting by the y-mean given that the value of PLS is >0"
+
+
+```
+
+
+### Part 4: PCR manually
+
+In this advanced part, I will repeat Part 1 without using `pcr()`. As stated in lecture 5, this only requires us to perform two simple steps: 1. Obtain $M$ principal components $Z_1,Z_2,\ldots,Z_M$ from the set of predictors $X$, 2. Regress the output variable $Y$ on $Z_1,Z_2,\ldots,Z_M$. 
+
+### Task 4a)
+
+By convention, principal components are obtained from standardized data. In order to do that, I use the `preProcess()` command from *caret*. `preProcess()` takes a matrix or data frame as its first input and calculates the variable-specific operations that I need to conduct a desired variable transformation. The actual transformation is then done by predicting from an object that was created by `preProcess()`. I will do this now:
+
+1. Use `preProcess()` to create the required transformations for standardizing all variables in the first 540 rows of `portfolios_train`. Read `help(preProcess)` in order to figure out how to set the correct function arguments. Save the resulting object as `stdz_param.4a`. 
+2. Predict the standardized version of `portfolios_train[1:540,]` using `stdz_param_1a`. Save your "predictions" as a **matrix** `portfolios_train540_stdz_4a`
+3. An alternative method for variable scaling would be normalization. Use `preProcess()` to create the transformations that I need to get normalized data. Save them as `norm_param_4a` (I won't use this object any further).      
+
+
+``` {r }
+
+stdz_param_4a <- caret::preProcess(portfolios_train[1:540, ], method = c("center", "scale"))
+portfolios_train540_stdz_4a <- predict(stdz_param_4a, newdata = portfolios_train[1:540, ])
+norm_param_4a      <- preProcess(portfolios_train[1:540, ], method = "range")
+
+```
+
+### Task 4b)
+
+I can now use the eigendecomposition (a.k.a spectral decomposition) to obtain principal components (PCs). The `eigen()` command in R allows us to obtain a list object containing the eigenvectors and eigenvalues of any square matrix that I feed into `eigen()`. Now, I want to construct the scores of the first two principal components. In order to do that, review the slides of Lecture 5 and do the following:
+
+1. Use `eigen()` to get the loadings of the first two principal components of `X_train_stdz_4a`. Save them as `PCloadings_4b`.
+2. Use `PCloadings_4b` to construct the scores of the first two PCs of `X_train_stdz_4a` and save them as `PCscores_4b`.
+
+``` {r }
+
+eigendecomp_4b <- eigen(cov(portfolios_train540_stdz_4a))
+PCloadings_4b  <- eigendecomp_4b$vectors[, 1:2]
+PCscores_4b    <- as.matrix(portfolios_train540_stdz_4a) %*% PCloadings_4b
+
+```
+
+### Task 4c)
+
+Proceed with the second step of PCR: 
+
+1. Create an output variable `y_4c` that contains the first 540 observed 12-month market returns.
+2. Create an input matrix `Z_4c` containing `PCscores_4b` and a constant. 
+3. Obtain the learned coefficients for a linear regression model with inputs `Z_4c`, output `y_4c` and squared error loss. Do this manually using only the `solve()` and `t()` commands as Ill as matrix operations. Save the result as `pcr_coefs_4c`.
+
+
+``` {r }
+
+y_4c <- mkt_ret_12m_train[1:540]
+constant_col <- rep(1, length(y_4c))
+Z_4c <- cbind(constant_col, PCscores_4b)
+pcr_coefs_4c <- solve(t(Z_4c) %*% Z_4c) %*% t(Z_4c) %*% y_4c
+
+```
+
+### Task 4d)
+
+Now that I have learned our PCR model, I can get an output prediction for data point 541.
+
+1. "Predict" a standardized version of the 100 portfolio returns in data point 541 from `stdz_param_4a`. In order to prevent R from converting this single row of `stdz_param_4a` into a vector, you must add an additional `,drop=FALSE` into the square brackets that you use for indexing. Save the resulting $1\times 100$ matrix of standardized inputs as `X_test_4d`.
+2. Use `PCloadings_4b` to get the PC scores corresponding to the 100 values in `X_test_4d`. Save them, together with a constant, in a $1\times 3$ matrix `Z_test_4d`.
+3. Get a prediction from the model learned in Task 4c for the input combination `Z_test_4d`. Save this prediction as `pcr_pred_4d`.
+
+``` {r, echo=TRUE}
+
+X_test_4d   <- predict(stdz_param_4a, newdata = portfolios[541, , drop = FALSE])
+Z_test_4d  <- cbind(1, as.matrix(X_test_4d) %*% PCloadings_4b)
+pcr_pred_4d <- Z_test_4d %*% pcr_coefs_4c
+pcr_pred_4d
+```
+ 
+

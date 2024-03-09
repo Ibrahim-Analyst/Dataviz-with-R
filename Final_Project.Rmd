@@ -1,0 +1,292 @@
+---
+title: "Final Project"
+subtitle: "(Data Visualization)"
+author: "(Ibrahim Khan Jabarkhail)"
+date: "`r Sys.Date()`"
+papersize: a4
+geometry: margin=4cm
+colorlinks: true
+output:
+  pdf_document:
+    number_sections: true
+    
+---
+
+# Introduction
+As part of the final project, I will be using the Bike Sharing Dataset. The dataset contains the hourly and daily count of rental bikes between 2011 and 2012 in Capital bike sharing system with the relevant weather and seasonal information. I found this dataset on the UCL Machine Learning Repository.
+
+Unlike buses or subways, bike-sharing systems track the exact travel times, starting points, and destinations. This makes bike-sharing like a network of virtual sensors, helping us understand how people move around the city. By watching this data, we can likely spot major city events. In the following text, I am describing, analyzing and visualizing the dataset. 
+
+## My Research Question
+Below are my research questions:
+
+What are the peak usage times for bike-sharing systems?
+
+This question will guide an analysis focusing on understanding demand patterns, which are critical for resource allocation, pricing strategies, and operational planning.
+
+How do weather conditions influence bike-sharing habits?
+
+Here, I am investigating external factors affecting demand. This analysis can help in understanding risks and planning for contingencies.
+
+Can we predict bike-sharing demand?
+
+A predictive modeling approach could help in optimizing the bike-sharing operations, improving customer satisfaction, and driving revenue.
+
+## Description of the data
+In this task, I will look at the structure of the dataset and store the data in R. The data is available in CSV form and hence I used the read.csv command to read the file. It is a multivariate dataset with 16 features or variables. 
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(MASS)   
+library(dplyr)  
+library(knitr)  
+
+# Load the data
+# Create a markdown table from a data frame
+day_df<-read.csv('hour.csv')
+hour_df<-read.csv('day.csv')
+
+library(knitr)
+library(kableExtra)
+
+# Adjusting for 'day_df'
+head(day_df)
+```
+```{r, echo=FALSE, include=FALSE}
+
+day_df$dteday <- as.Date(day_df$dteday)
+hour_df$dteday <- as.Date(hour_df$dteday)
+
+summary(day_df)
+
+```
+
+Next, I will describe the variables in the dataset given as under:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+library(kableExtra)
+
+# Create a data frame with the variable descriptions
+variable_descriptions <- data.frame(
+  Variable = c("instant", "dteday", "season", "yr", "mnth", "holiday", "weekday", "workingday", 
+               "weathersit", "temp", "atemp", "hum", "windspeed", "casual", "registered", "cnt"),
+  Description = c("Record index", 
+                  "Date of the rentals", 
+                  "Season (1:spring, 2:summer, 3:fall, 4:winter)", 
+                  "Year (0: 2011, 1: 2012)", 
+                  "Month (1-12)", 
+                  "Whether day is holiday (0: no, 1: yes)", 
+                  "Day of the week (0-6)", 
+                  "Whether day is working day (0: no, 1: yes)", 
+                  "Weather situation (1: clear, 2: mist, 3: light rain/snow, 4: heavy rain/snow)", 
+                  "Normalized temperature in Celsius", 
+                  "Normalized feeling temperature in Celsius", 
+                  "Normalized humidity", 
+                  "Normalized wind speed", 
+                  "Count of casual users", 
+                  "Count of registered users", 
+                  "Total count of bike rentals")
+)
+
+# Use kable to create a clean table
+variable_descriptions %>%
+  kable("pipe", booktabs = TRUE) %>%  # Create a table with Markdown syntax and nice formatting
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                full_width = FALSE, position = "center") %>%  # Add styling options
+  column_spec(1, bold = TRUE)  # Make the 'Variable' column bold
+
+```
+
+# Data Visualization or Analysis
+
+## Time Series Chart of Bicycle Rented
+First, I will draw a time series chart to show number of bikes rented over time. This time series chart shows the count of bike rentals over time. There are noticeable patterns and fluctuations. We observe certain peaks and troughs that may correspond with seasons, suggesting a seasonal impact on bike rentals as shown in figure 1. Moreover, there seems to be a general upward trend, indicating growing popularity or expansion of the service.
+
+```{r, echo=FALSE, warning=FALSE, fig.cap="time series data for rental bikes"}
+library(ggplot2)
+ggplot(day_df, aes(x = dteday, y = cnt)) +
+  geom_line(color = "blue", size = 1) +  # Adjust the size for your preference
+  labs(title = "Daily Bike Rentals", x = "Date", y = "Count of Bike Rentals") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face="bold"),  # Center and bold the title
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
+    panel.grid.minor = element_blank(),  # Remove minor grid lines for a cleaner look
+    panel.grid.major.x = element_blank()  # Optionally, remove vertical grid lines
+  )
+```
+
+
+## Average bike rentals per hour
+tals per hour. This graph indicates the average number of bike rentals according to the hour of the day. We see significant spikes during morning and evening hours, aligning with typical commuting times. This suggests a substantial use of the bike-sharing service for commuting purposes as shown in figure 2. The relatively low usage during the late-night and early morning hours (0-5) is also consistent with what one would expect.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Average bike rentals per hour"}
+library(readr)
+hour_df <- read.csv("hour.csv")
+library(tidyverse)
+library(dplyr)
+average_hourly_counts <- hour_df %>% 
+  group_by(hr) %>% 
+  summarise(avg_cnt = mean(cnt))
+
+ggplot(average_hourly_counts, aes(x = hr, y = avg_cnt)) +
+  geom_line(color = "forestgreen") +
+  geom_point(color = "darkred") +
+  labs(title = "Average Bike Rentals by Hour of Day", x = "Hour of the Day", y = "Average Count of Bike Rentals") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+## Seasonal breakdown of rental bike
+
+Next, I will present the visualised pattern for each season. The box plot per season reveals a clear pattern: the highest number of rentals occurs during seasons 2 and 3, which represent summer and fall, respectively as shown in figure 3. This is logical, as the weather is generally more conducive to outdoor activities like biking during these seasons. Season 4, representing winter, shows a significant decrease in rentals, likely due to the colder weather.
+
+```{r, echo=FALSE, fig.cap="Bike Rentals in different seasons"}
+# Enhanced plot with trend line
+# Simplified and color-adjusted Visualization 3: Bike Rentals by Season
+ggplot(day_df, aes(x = factor(season), y = cnt, fill = factor(season))) +
+  geom_boxplot() +
+  scale_fill_manual(values=c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728")) +  # A set of distinct colors
+  labs(title = "Bike Rentals by Season", y = "Count of Bike Rentals") +
+  scale_x_discrete(labels=c("1" = "Spring", "2" = "Summer", "3" = "Fall", "4" = "Winter")) +  # Label the seasons properly
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Center the title
+    legend.position = "none",  # Since seasons are indicated by the x-axis, we don't need a legend
+    axis.title.x = element_blank(),  # Remove the x-axis title
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+    panel.grid.major.x = element_blank()  # Remove vertical grid lines
+  )
+```
+
+
+## Rental bikes in different weathers:
+
+As expected, the weather has a considerable influence on bike rentals. Clear or slightly cloudy weather is ideal, showing the highest number of rentals. As the weather worsens i.e., with rain or snow, the number of rentals decreases, with particularly adverse weather leading to a significant reduction in bike usage. This pattern underscores the importance of weather conditions in influencing consumer behavior regarding outdoor activities.
+
+```{r setup, echo=FALSE, message=FALSE, fig.cap="Bike Rentals in different weathers"}
+# Custom labels for weather situations
+weather_labels <- c("1" = "Clear", "2" = "Mist/Cloudy", "3" = "Light Rain/Snow", "4" = "Heavy Rain/Snow")
+
+# Plotting
+p<-ggplot(day_df, aes(x = factor(weathersit), y = cnt, fill = factor(weathersit))) +
+  geom_boxplot() +
+  scale_fill_manual(values=c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728")) +
+  labs(title = "Bike Rentals by Weather Situation", x = "Weather Situation", y = "Count of Bike Rentals") +
+  scale_x_discrete(labels = weather_labels) +  # Apply custom labels here
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none",  # No need for a legend; categories are on the x-axis
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+```
+
+```{r, echo=FALSE, fig.cap="Bike Rentals in different weathers"}
+p
+```
+
+
+
+## On different weekdays
+
+This bar chart contrasts the average number of bike rentals between weekdays and weekends. The rentals are marginally higher on weekends. This could be due to several factors: people may engage more in recreational activities on weekends or use bike-sharing for sightseeing and errands beyond regular commuting. The bike-sharing system, thus, serves diverse needs beyond just workday transportation.
+
+```{r, echo=FALSE, fig.cap="Bike Rentals comparison on weekend and weekdays"}
+# Create a 'day_type' variable
+day_df$day_type <- ifelse(day_df$weekday %in% c(0, 6), 'Weekend', 'Weekday')
+
+# Compute average counts
+average_counts_daytype <- day_df %>%
+  group_by(day_type) %>%
+  summarise(avg_cnt = mean(cnt))
+
+ggplot(average_counts_daytype, aes(x = day_type, y = avg_cnt, fill = day_type)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Bike Rentals: Weekday vs Weekend", x = "Day Type", y = "Average Count of Bike Rentals") +
+  scale_fill_manual(values=c("Weekday" = "#1f77b4", "Weekend" = "#2ca02c")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+## Comparison between casual and registered bike users
+
+This visualization presents a comparison between casual and registered users over time. Registered users consistently contribute the bulk of the bike rentals, with casual users contributing a smaller and more variable portion as shown in figure 6. This trend suggests a stable, predictable demand from registered users, possibly commuters, and a more variable demand from casual users, likely influenced by factors such as weather, tourism, and leisure activities.
+
+```{r, echo=FALSE, fig.cap="Bike Rentals based on those registered and casual"}
+# We'll first calculate the averages, then plot
+average_hourly_user <- hour_df %>%
+  group_by(hr) %>%
+  summarise(avg_casual = mean(casual), avg_registered = mean(registered))
+
+ggplot(average_hourly_user, aes(x = hr)) +
+  geom_line(aes(y = avg_casual, color = "Casual"), size = 1) +
+  geom_line(aes(y = avg_registered, color = "Registered"), size = 1) +
+  scale_color_manual(values=c("Casual" = "#ff7f0e", "Registered" = "#1f77b4")) +
+  labs(title = "Average Hourly Bike Rentals by User Type", x = "Hour of the Day", y = "Average Count of Bike Rentals", color = "User Type") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Monthly breakdown of rental bike sharing
+The monthly trends line graph reveals seasonal rental patterns. There's clear uptick in rentals during warmer months (May through September), coinciding with summer and early fall, while the colder months see significant decrease. This seasonality suggests that weather plays a critical role in bike rental frequency. The service's popularity during the warmer season indicates a potential area for targeted marketing strategies.
+```{r, echo=FALSE, fig.cap="Average of bike rentals in different months"}
+# Extract month from date and group by it, then calculate the average
+day_df$month <- month(day_df$dteday)
+
+average_monthly_counts <- day_df %>%
+  group_by(month) %>%
+  summarise(avg_cnt = mean(cnt))
+
+ggplot(average_monthly_counts, aes(x = month, y = avg_cnt)) +
+  geom_line(color = "#1f77b4", size = 1) +
+  geom_point(color = "#ff7f0e") +
+  scale_x_continuous(breaks = 1:12, labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) +
+  labs(title = "Average Monthly Bike Rentals", x = "Month", y = "Average Count of Bike Rentals") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+# Conclusion
+The data reveals several key insights into the bike-sharing service:
+
+Seasonal Influence: There's a strong seasonal pattern in bike rentals, with demand peaking during milder weather (summer and fall) and decreasing in harsher conditions (winter).
+
+Daily Patterns: Bike rentals are heavily influenced by the time of day, with clear spikes during typical commuting hours. This suggests the service is not only used for leisure but significantly for commuting as well.
+
+Weather Impact: Not surprisingly, weather conditions significantly influence rental patterns, with clear weather promoting higher usage and adverse weather leading to decreased demand.
+
+User Types: Registered users provide a steady demand, likely representing daily commuters and consistent users, while casual usage varies more, possibly influenced by external factors such as weather and holiday seasons.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
